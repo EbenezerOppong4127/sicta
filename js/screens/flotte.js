@@ -78,7 +78,7 @@ export default function flotte({ go }) {
       file.text().then((t) => {
         const { added, errors } = parseFleetCsv(t, vehicles().map((v) => v.plate));
         if (added.length) store.patch('fleet', { extra: [...store.get().fleet.extra, ...added], selected: [...store.get().fleet.selected, ...added.map((v) => v.id)] });
-        toast(`${added.length} véhicule(s) importé(s)${errors.length ? ` · ${errors.length} ligne(s) ignorée(s)` : ''}`, errors.length && !added.length ? 'err' : 'ok');
+        toast(added.length ? `${added.length} véhicule(s) importé(s)${errors.length ? ` · ${errors.length} ligne(s) ignorée(s)` : ''}` : `Aucun véhicule importé${errors.length ? ` (${errors.length} ligne(s) invalide(s))` : ' : fichier vide ou format non reconnu'}`, added.length ? 'ok' : 'err');
         if (errors.length) console.warn(errors.join('\n'));
         e.target.value = '';
         paint();

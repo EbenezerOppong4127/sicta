@@ -37,7 +37,9 @@ const ASSETS = [
   "./js/store.js",
   "./js/util.js",
   "./js/vendor/qrcode.js",
-  "./manifest.webmanifest"
+  "./manifest.webmanifest",
+  "./tests/e2e.mjs",
+  "./tests/unit.test.mjs"
 ];
 // </assets>
 

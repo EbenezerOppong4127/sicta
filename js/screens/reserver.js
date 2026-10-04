@@ -40,10 +40,16 @@ function creneau(go) {
   let big = false;
   let showAll = false;
   let geo = null;
-  let day = b0.date && b0.date >= today && !isSunday(b0.date) ? b0.date : null;
+  const firstBookable = () => {
+    for (let i = 0; i < 35; i++) {
+      const d = addDays(today, i);
+      if (!isSunday(d) && slotsFor(store.get().booking.centerId, d).length) return d;
+    }
+    return null;
+  };
+  let day = b0.date && b0.date >= today && bookable(b0.date) ? b0.date : firstBookable();
   let time = day === b0.date ? b0.time : null;
   let week = mondayOf(day ?? workday(today));
-  if (!day) day = null;
 
   const node = el(`
   <div class="stack-lg">
@@ -90,8 +96,7 @@ function creneau(go) {
     const total = rows.length;
     const limit = q || zone !== 'tous' || big || showAll ? rows.length : 4;
     let shown = rows.slice(0, limit);
-    const pinned = CENTERS.find((c) => c.id === sel);
-    if (pinned && !shown.some((c) => c.id === sel) && rows.some((c) => c.id === sel)) shown = [rows.find((c) => c.id === sel), ...shown.slice(0, limit - 1)];
+    if (!shown.some((c) => c.id === sel) && rows.some((c) => c.id === sel)) shown = [...shown.slice(0, Math.max(limit - 1, 0)), rows.find((c) => c.id === sel)];
     node.querySelector('#stations').innerHTML = (shown.length ? shown.map((c) => `
       <label class="station ${c.id === sel ? 'is-on' : ''}"><input type="radio" name="center" value="${c.id}" ${c.id === sel ? 'checked' : ''}>
         <span class="station__b"><b>SICTA ${esc(c.name)}</b>
@@ -144,7 +149,8 @@ function creneau(go) {
     store.patch('booking', { centerId: id, date: null, time: null });
     // un autre centre a d'autres disponibilités : on garde le jour, on revalide l'heure
     if (time && !slotsFor(id, day ?? today).some((s) => s.time === time && !s.full)) time = null;
-    if (day && !bookable(day)) day = null;
+    if (!day || !bookable(day)) { day = firstBookable(); time = null; }
+    if (day) week = mondayOf(day);
     paintAll();
   };
 

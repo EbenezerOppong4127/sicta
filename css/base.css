@@ -111,7 +111,7 @@ h3 { font-size: 16px; }
 .brand__t { display: none; flex-direction: column; line-height: 1.05; }
 .brand__t b { font-size: 18px; letter-spacing: -.01em; }
 .brand__t small { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); }
-.topbar__title { flex: 1; text-align: center; font-size: 17px; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar__title { flex: 1; text-align: center; font-size: 17px; font-weight: 700; color: var(--navy); letter-spacing: -.01em; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar__end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .topbar .topbar__cta { display: none; white-space: nowrap; }
 .topnav { display: none; }

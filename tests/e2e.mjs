@@ -66,16 +66,18 @@ const pickSlot = async (page, o = {}) => {
   await page.waitForSelector('#pay');
 };
 const payAndWait = async (page, sel = '.ticket') => { await page.click('#pay'); await page.waitForSelector('.modal'); await page.waitForSelector(sel, { timeout: 9000 }); };
+const uncheckAll = async (page) => { while (await page.locator('.chk:checked').count()) await page.locator('label.veh.is-on').first().click(); };
+const printed = async (page) => { await page.waitForFunction(() => window.__printed, null, { timeout: 4000 }); return page.evaluate(() => window.__printed); };
 const csv = (rows) => ({ name: 'f.csv', mimeType: 'text/csv', buffer: Buffer.from(rows.join('\n')) });
 
 // ──────────────────────────────────────────────────────────────
 group('Gardes de navigation et robustesse');
 await test('Pas de créneau → /reserver/paiement renvoie à /reserver', async (p) => { await open(p, '/reserver/paiement'); eq(await hash(p), '#/reserver'); });
 await test('Pass non payé → /reserver/pass renvoie à /reserver', async (p) => { await open(p, '/reserver/pass'); eq(await hash(p), '#/reserver'); });
-await test('Pass flotte non payé → facturation', async (p) => { await open(p, '/flotte/pass'); eq(await hash(p), '#/flotte/facturation'); });
+await test('Pass flotte non payé → retour au planning (aucune date choisie)', async (p) => { await open(p, '/flotte/pass'); eq(await hash(p), '#/flotte/planning'); });
 await test('Planning sans sélection → dashboard', async (p) => {
   await open(p, '/flotte');
-  for (const c of await p.locator('.chk').all()) if (await c.isChecked()) await p.locator('label.veh', { has: c }).click();
+  await uncheckAll(p); eq(await p.locator('.chk:checked').count(), 0);
   await open(p, '/flotte/planning'); eq(await hash(p), '#/flotte');
 });
 await test('Route inconnue → accueil', async (p) => { await open(p, '/nimporte/quoi'); eq(await hash(p), '#/'); });
@@ -113,7 +115,7 @@ await test('Le choix du simulateur arrive jusqu’au récapitulatif de paiement'
 });
 await test('Barème : « Choisir ce tarif » présélectionne la catégorie', async (p) => {
   await open(p, '/simulateur'); await p.locator('[data-pick=moto]').click(); await p.waitForSelector('text=Choisissez votre station');
-  await p.locator('.slot').first().waitFor(); ok(await p.locator('#tarif-note').innerText().then((t) => /Moto/.test(t)), 'moto');
+  ok(/Moto/.test(await text(p, '#tarif-note')), 'catégorie moto reprise'); ok(nospace(await text(p, '#tarif-note')).includes('6500FCFA'), 'tarif moto');
 });
 
 group('Vérification de plaque / carte grise');
@@ -192,7 +194,8 @@ await test('Créneaux complets non cliquables, un seul « Dernier »', async (p)
 });
 await test('Horloge : samedi 17h45 (après fermeture) → premier jour = lundi', async (p) => {
   await open(p, '/reserver'); const first = await p.locator('.day:not([disabled]) small').first().innerText(); ok(/LUN/i.test(first), 'lundi attendu, reçu ' + first);
-  const disabled = await p.locator('.day[disabled]').count(); ok(disabled >= 1, 'jour du jour désactivé');
+  eq(await p.locator('.day[aria-checked=true]').count(), 1, 'un jour présélectionné'); ok(await p.locator('#prev').isEnabled(), 'on peut revenir en arrière');
+  await p.click('#prev'); eq(await p.locator('.day:not([disabled])').count(), 0, 'semaine en cours entièrement indisponible après 17h samedi');
 }, { time: new Date('2026-10-10T17:45:00') });
 await test('Horloge : samedi 10h → créneaux du jour à partir de 11:00', async (p) => {
   await open(p, '/reserver'); const t = await p.locator('.day:not([disabled])').first(); ok(/SAM/i.test(await t.innerText()), 'samedi sélectionnable'); await t.click();
@@ -231,7 +234,7 @@ await test('Parcours complet → Pass : QR lisible, identifiant, agenda, impress
   const payload = await decodeQR(p.locator('.ticket__qr .qr')); ok(payload.startsWith('SICTA|' + ref + '|7492KL01|'), 'payload QR : ' + payload); ok(payload.endsWith('|vridi'), 'centre dans le QR');
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#cal')]); const ics = (await import('node:fs')).readFileSync(await dl.path(), 'utf8');
   ok(/BEGIN:VCALENDAR/.test(ics) && /SUMMARY:Visite technique SICTA 7492 KL 01/.test(ics) && /DTSTART:\d{8}T\d{6}/.test(ics) && /DTEND:\d{8}T\d{6}/.test(ics), '.ics valide');
-  await p.click('#pdf'); const printed = await p.evaluate(() => window.__printed); ok(printed && /sheet/.test(printed) && /<svg/.test(printed) && printed.includes(ref), 'feuille A4 générée');
+  await p.click('#pdf'); const html = await printed(p); ok(/sheet/.test(html) && /<svg/.test(html) && html.includes(ref), 'feuille A4 générée');
   ok((await p.getAttribute('#share', 'href')).includes('wa.me') && (await p.getAttribute('#share', 'href')).includes(encodeURIComponent(ref)), 'lien WhatsApp');
   ok((await text(p, '.chip--cta.chip--lg')).includes('Moov'), 'moyen de paiement affiché');
   await p.reload(); await p.waitForSelector('.ticket'); eq(await text(p, '.ticket__id'), id, 'Pass persistant');
@@ -264,7 +267,7 @@ await test('Onglets, historique, ajout/retrait, carte grise, rendez-vous', async
   await p.click('[data-act=add]'); await p.fill('#add [name=plate]', '0000 ZZ 00'); await p.click('#add button.btn--primary'); ok((await text(p, '#main')).includes('non référencé'), 'véhicule inconnu'); ok(await p.locator('[data-act=zoom]').count() === 0, 'pas de carte grise');
   await p.click('[data-act=del]'); eq(await p.locator('.vtab').count(), 4, 'retiré (5 → 4)'.length ? 4 : 0);
   await p.locator('.vtab').nth(0).click(); await p.click('[data-act=zoom]'); await p.waitForSelector('.modal .cg--big'); await p.keyboard.press('Escape'); eq(await p.locator('.modal').count(), 0, 'Échap ferme');
-  await p.click('[data-act=pdf]'); ok((await p.evaluate(() => window.__printed)).includes('CG24029576'), 'PDF carte grise');
+  await p.click('[data-act=pdf]'); ok((await printed(p)).includes('CG24029576'), 'PDF carte grise');
   await p.click('[data-act=book]'); eq(await hash(p), '#/reserver'); await pickSlot(p); eq(await p.inputValue('[name=plate]'), '1580 EF 01', 'plaque pré-remplie'); eq(await p.inputValue('[name=model]'), 'Toyota Corolla XLI', 'modèle pré-rempli');
 });
 await test('Retirer tous les véhicules : état vide puis ajout', async (p) => {
@@ -281,7 +284,7 @@ await test('Dashboard : KPI, filtres, recherche, sélection', async (p) => {
   await p.click('[data-f=PL]'); eq(await p.locator('label.veh').count(), 2); await p.click('[data-f=Minibus]'); eq(await p.locator('label.veh').count(), 1); await p.click('[data-f=urgent]'); eq(await p.locator('label.veh').count(), 3); await p.click('[data-f=all]');
   await p.fill('#q', 'actros'); eq(await p.locator('label.veh').count(), 1); await p.fill('#q', 'zzzz'); ok((await text(p, '#list')).includes('Aucun véhicule'), 'vide'); await p.fill('#q', '');
   await p.click('#sel-urgent'); ok((await text(p, '#book-l')).includes('3 véhicules'), '3 urgents sélectionnés'); eq(await text(p, '#brk'), '1 PL, 1 VP, 1 Minibus');
-  for (const c of await p.locator('.chk:checked').all()) await p.locator('label.veh', { has: c }).click();
+  await uncheckAll(p);
   ok(await p.locator('#book').isDisabled(), 'CTA désactivé sans sélection'); ok((await text(p, '#book-l')).includes('au moins 1'), 'message'); eq(await text(p, '#brk'), 'Aucun type');
 });
 await test('Import CSV : lignes valides, erreurs, doublons, sélection auto', async (p) => {
@@ -333,7 +336,7 @@ await test('Parcours flotte complet : débit du compte, 4 Pass lisibles, envoi, 
   await p.evaluate(() => document.querySelectorAll('[data-send]').forEach((a) => a.addEventListener('click', (e) => e.preventDefault(), true)));
   await p.locator('[data-send]').first().click(); await p.waitForFunction(() => document.querySelectorAll('.chip--ok').length >= 1); await p.reload(); await p.waitForSelector('#passes');
   ok((await p.locator('#passes .chip--ok').count()) === 1, 'envoi persistant'); eq(await p.locator('#passes .chip--warn').count(), 3);
-  await p.click('#pdf'); const html = await p.evaluate(() => window.__printed); eq((html.match(/class="sheet"/g) || []).length, 4, '4 pages A4'); ok((html.match(/<svg/g) || []).length === 4, '4 QR imprimés');
+  await p.click('#pdf'); const html = await printed(p); eq((html.match(/class="sheet"/g) || []).length, 4, '4 pages A4'); ok((html.match(/<svg/g) || []).length === 4, '4 QR imprimés');
   await open(p, '/flotte/facturation'); ok((await text(p, '#main')).includes('Facture réglée'), 'facture réglée'); await p.click('#new'); eq(await hash(p), '#/flotte');
   await open(p, '/flotte/pass'); eq(await hash(p), '#/flotte/facturation');
 });
@@ -357,7 +360,8 @@ await test('Simulateur de parc : curseurs, mode mobile, réinitialisation', asyn
   for (const k of ['vl', 'pl', 'bus', 'moto']) await p.locator(`[data-k=${k}]`).fill('0'); eq(await text(p, '#r-tot'), '0'); ok((await text(p, '#r-days')).includes('—'), 'pas de campagne');
 });
 await test('Formulaire de convention : validations puis confirmation', async (p) => {
-  await open(p, '/pro'); await p.locator('#lead button[type=submit]').click(); eq(await p.locator('#lead [aria-invalid=true]').count(), 6, '6 champs signalés'); ok((await p.evaluate(() => document.activeElement.name)) === 'company', 'focus sur le premier');
+  await open(p, '/pro'); await p.locator('#lead button[type=submit]').click(); eq(await p.locator('#lead [aria-invalid=true]').count(), 5, '5 champs signalés (la taille du parc est pré-remplie par le simulateur)');
+  await p.selectOption('#lead [name=size]', ''); await p.locator('#lead button[type=submit]').click(); eq(await p.locator('#lead [aria-invalid=true]').count(), 6, '6 champs si la taille est vide'); ok((await p.evaluate(() => document.activeElement.name)) === 'company', 'focus sur le premier');
   await p.fill('#lead [name=company]', 'ACME SA'); await p.fill('#lead [name=contact]', 'Koné Mamadou, DG'); await p.fill('#lead [name=phone]', '0700000000'); await p.fill('#lead [name=email]', 'pas-un-email'); await p.selectOption('#lead [name=size]', '1'); await p.selectOption('#lead [name=zone]', { index: 1 });
   await p.locator('#lead button[type=submit]').click(); eq(await p.locator('#lead [aria-invalid=true]').count(), 1); ok((await text(p, '#lead')).includes('Adresse email invalide'), 'email');
   await p.fill('#lead [name=email]', 'dg@acme.ci'); await p.locator('#lead button[type=submit]').click(); await p.waitForSelector('#lead .okmark'); ok(/PRO-\d{4}-\d{4}/.test(await text(p, '#lead')), 'référence');
@@ -371,7 +375,7 @@ group('Compte, centres, accessibilité');
 await test('Profil : validation du téléphone, persistance, avatar', async (p) => {
   await open(p, '/compte'); await p.fill('#prof [name=name]', 'Awa'); await p.fill('#prof [name=phone]', '123'); await p.click('#prof button.btn--primary'); ok((await text(p, '#prof .field__error')).includes('invalide'), 'téléphone invalide');
   await p.fill('#prof [name=phone]', '0708091011'); await p.click('#prof button.btn--primary'); await p.waitForSelector('.toast--ok'); eq(await text(p, '#avatar'), 'A'); await p.reload(); eq(await p.inputValue('#prof [name=name]'), 'Awa');
-  await open(p, '/simulateur'); ok((await text(p, 'h1')).includes('Awa'), 'salutation');
+  await open(p, '/simulateur'); ok((await text(p, '#main h1')).includes('Awa'), 'salutation');
   await open(p, '/reserver'); await pickSlot(p); eq(await p.inputValue('[name=contact]'), '07 08 09 10 11', 'contact pré-rempli depuis le profil');
 });
 await test('Centres : recherche, filtre de zone, réservation depuis un centre', async (p) => {
@@ -383,7 +387,7 @@ await test('Réinitialiser les données de démo', async (p) => {
   await open(p, '/vehicules'); await p.click('[data-act=del]'); await open(p, '/compte'); await p.click('#reset'); await open(p, '/vehicules'); eq(await p.locator('.vtab').count(), 3);
 });
 await test('Accessibilité : noms accessibles, langue, repères', async (p) => {
-  ok((await p.evaluate(() => document.documentElement.lang)) === 'fr', 'lang=fr');
+  await open(p, '/'); ok((await p.evaluate(() => document.documentElement.lang)) === 'fr', 'lang=fr');
   for (const r of ['/', '/simulateur', '/reserver', '/vehicules', '/compte', '/verifier', '/flotte', '/pro', '/centres']) {
     await open(p, r);
     const bad = await p.evaluate(() => {
@@ -396,15 +400,16 @@ await test('Accessibilité : noms accessibles, langue, repères', async (p) => {
   }
 });
 await test('Clavier : lien d’évitement, onglets et boutons atteignables', async (p) => {
-  await open(p, '/simulateur'); await p.keyboard.press('Tab'); ok((await p.evaluate(() => document.activeElement.className)).includes('skip'), 'skip-link en premier');
-  await p.keyboard.press('Enter'); ok((await p.evaluate(() => document.activeElement.id)) === 'main', 'focus sur main');
+  await open(p, '/simulateur'); ok((await p.evaluate(() => document.activeElement.id)) === 'main', 'le focus est placé sur le contenu à chaque changement de page');
+  await p.locator('.skip').focus(); const top = await p.locator('.skip').boundingBox(); ok(top.y >= 0, 'lien d’évitement visible au focus');
+  await p.evaluate(() => document.querySelector('#topbar a.brand').focus()); await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+  await p.locator('.skip').focus(); await p.keyboard.press('Enter'); ok((await p.evaluate(() => document.activeElement.id)) === 'main', 'le lien d’évitement mène au contenu');
   await open(p, '/reserver'); await p.locator('.day:not([disabled])').first().focus(); await p.keyboard.press('Enter'); await p.locator('.slot:not([disabled])').first().focus(); await p.keyboard.press('Space'); ok(await p.locator('#go').isEnabled(), 'créneau choisi au clavier');
 });
 await test('Impression : seule la feuille A4 est visible', async (p) => {
   await open(p, '/reserver'); await pickSlot(p); await fillPay(p); await payAndWait(p);
-  await p.evaluate(() => { window.print = () => {}; }); await p.click('#pdf'); await p.emulateMedia({ media: 'print' });
-  await p.evaluate(() => { document.body.classList.add('printing'); const r = document.createElement('div'); r.id = 'print-root'; r.innerHTML = '<section class="sheet">x</section>'; document.body.append(r); });
-  eq(await p.locator('main').isVisible(), false, 'main masqué à l’impression'); eq(await p.locator('#print-root').isVisible(), true, 'feuille visible');
+  await p.evaluate(() => { window.print = () => {}; }); await p.click('#pdf'); await p.waitForSelector('#print-root', { state: 'attached' }); await p.emulateMedia({ media: 'print' });
+  eq(await p.locator('main').isVisible(), false, 'main masqué à l’impression'); eq(await p.locator('#topbar').isVisible(), false, 'en-tête masqué'); eq(await p.locator('#print-root .sheet').isVisible(), true, 'feuille visible'); ok((await p.locator('#print-root svg').count()) === 1, 'QR imprimé');
 });
 
 group('Hors ligne (service worker)');

@@ -31,7 +31,7 @@ export default function compteFlotte({ go }) {
     if (!file) return;
     const { added, errors } = parseFleetCsv(await file.text(), fleetVehicles().map((v) => v.plate));
     if (added.length) store.patch('fleet', { extra: [...store.get().fleet.extra, ...added], selected: [...store.get().fleet.selected, ...added.map((v) => v.id)] });
-    toast(`${added.length} importé(s)${errors.length ? ` · ${errors.length} ignoré(s)` : ''}`, added.length ? 'ok' : 'err');
+    toast(added.length ? `${added.length} véhicule(s) importé(s)${errors.length ? ` · ${errors.length} ignoré(s)` : ''}` : `Aucun véhicule importé${errors.length ? ` (${errors.length} ligne(s) invalide(s))` : ' : fichier vide ou format non reconnu'}`, added.length ? 'ok' : 'err');
     if (added.length) go('/flotte');
   });
   return root;
