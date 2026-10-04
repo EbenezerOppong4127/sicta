@@ -1,21 +1,23 @@
 // Point d'entrée : routes, chrome (en-tête / onglets / titre) et enregistrement du service worker.
 import { startRouter, go } from './router.js';
 import { ic } from './util.js';
+import { store } from './store.js';
 
 const lazy = (name) => () => import(`./screens/${name}.js`);
 const redirect = (to) => async () => ({ default: () => ({ redirect: to }) });
 
-const STEP_BACK = { tarif: '/simulateur', creneau: '/reserver', paiement: '/reserver/creneau', pass: '/simulateur' };
+const STEP_BACK = { creneau: '/simulateur', paiement: '/reserver', pass: '/simulateur' };
 
 const routes = [
   { path: '/', load: lazy('home'), nav: null, footer: true, title: '' },
   { path: '/simulateur', load: lazy('simulateur'), nav: 'user', key: '/simulateur', title: 'Simulateur' },
   { path: '/tarifs', load: redirect('/simulateur') },
-  { path: '/reserver/:step?', load: lazy('reserver'), nav: 'user', key: '/reserver', title: 'Rendez-vous', back: (p) => STEP_BACK[p.step ?? 'tarif'] },
-  { path: '/centres', load: lazy('centres'), nav: 'user', key: '/centres', title: 'Centres & horaires', back: '/simulateur' },
-  { path: '/vehicules', load: lazy('vehicules'), nav: 'user', key: '/vehicules', title: 'Mes véhicules', back: '/simulateur' },
+  { path: '/reserver/:step?', load: lazy('reserver'), nav: 'user', key: '/reserver', title: 'Rendez-vous', back: (p) => STEP_BACK[p.step ?? 'creneau'] },
+  { path: '/centres', load: lazy('centres'), nav: 'user', key: '/reserver', title: 'Centres & horaires', back: '/simulateur' },
+  { path: '/vehicules', load: lazy('vehicules'), nav: 'user', key: '/vehicules', title: 'Véhicules & cartes grises', back: '/simulateur' },
   { path: '/compte', load: lazy('compte'), nav: 'user', key: '/compte', title: 'Profil & aide', back: '/simulateur' },
   { path: '/verifier', load: lazy('verifier'), nav: 'user', key: null, title: 'Vérifier ma vignette', back: '/' },
+  { path: '/pro', load: lazy('pro'), nav: null, footer: true, title: 'SICTA Pro', back: '/' },
   { path: '/flotte', load: lazy('flotte'), nav: 'fleet', key: '/flotte', title: 'Dashboard flotte', back: '/' },
   { path: '/flotte/planning', load: lazy('flotte-planning'), nav: 'fleet', key: '/flotte/planning', title: 'Planification flotte', back: '/flotte' },
   { path: '/flotte/facturation', load: lazy('flotte-facturation'), nav: 'fleet', key: '/flotte/facturation', title: 'Facturation groupée', back: '/flotte/planning' },
@@ -25,10 +27,10 @@ const routes = [
 ];
 
 const NAV = {
-  user: [['/simulateur', 'home', 'Accueil'], ['/reserver', 'calendar_month', 'Rendez-vous'], ['/centres', 'pin_drop', 'Centres'], ['/vehicules', 'garage', 'Véhicules'], ['/compte', 'person', 'Compte']],
+  user: [['/simulateur', 'calculate', 'Tarifs'], ['/reserver', 'calendar_month', 'Rendez-vous'], ['/vehicules', 'garage', 'Véhicules'], ['/compte', 'person', 'Compte']],
   fleet: [['/flotte', 'grid_view', 'Tableau de bord'], ['/flotte/planning', 'calendar_month', 'Planning'], ['/flotte/facturation', 'receipt_long', 'Facturation'], ['/flotte/compte', 'corporate_fare', 'Compte']],
 };
-const TOP = [['/', 'Accueil'], ['/reserver', 'Prendre rendez-vous'], ['/simulateur', 'Tarifs & réglementation'], ['/centres', 'Centres & horaires'], ['/verifier', 'Vérifier ma vignette'], ['/flotte', 'Espace flotte B2B']];
+const TOP = [['/', 'Accueil'], ['/reserver', 'Prendre rendez-vous'], ['/simulateur', 'Tarifs & réglementation'], ['/centres', 'Centres & horaires'], ['/verifier', 'Vérifier ma vignette'], ['/pro', 'Espace flotte B2B']];
 
 const $ = (s) => document.querySelector(s);
 const main = $('#main');
@@ -45,6 +47,11 @@ $('#footer').innerHTML = `
     <div class="small"><b>Assistance</b><br>Centre d’appels : <a href="tel:1300">1300</a> · Urgence : <a href="tel:1301">1301</a><br>Boulevard de Vridi, Zone Portuaire, Abidjan</div>
   </div>
   <div class="footer__bar small">© ${new Date().getFullYear()} SICTA — Société Ivoirienne de Contrôles Techniques Automobiles.</div>`;
+
+const avatar = document.querySelector('#avatar');
+const paintAvatar = () => (avatar.textContent = (store.get().profile.name || 'K').trim().charAt(0).toUpperCase());
+store.subscribe(paintAvatar);
+paintAvatar();
 
 startRouter(routes, (route, params, view) => {
   backTo = typeof route.back === 'function' ? route.back(params) : route.back ?? null;

@@ -38,7 +38,8 @@ const defaults = () => ({
     snapshot: null, // planning figé au paiement (sert au Pass & Dispatch)
   },
   reminders: {},
-  vehicles: [{ plate: '6021 KB 01', label: 'Toyota RAV4' }], // « Mes véhicules » (espace particulier)
+  vehicles: [{ plate: '1580 EF 01' }, { plate: '6021 KB 01' }, { plate: '4589 HJ 01' }], // « Mes véhicules » (espace particulier)
+  leads: [], // demandes de convention flotte (page SICTA Pro)
   profile: { name: 'Koffi', phone: '' },
   createdAt: todayISO(),
 });

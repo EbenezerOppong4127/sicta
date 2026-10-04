@@ -42,7 +42,7 @@ const H = (open, close) => ({ open, close });
 export const CENTERS = [
   { id: 'vridi', zone: 'abidjan', city: 'Abidjan', name: 'Vridi Port (Centre pilote)', addr: 'Boulevard de Vridi, Zone Portuaire, face terminal à conteneurs', hours: H('07:30', '17:00'), lanes: '4 VL + 2 PL', wait: 15, flow: 'fluide', fast: true },
   { id: 'angre', zone: 'abidjan', city: 'Abidjan', name: 'Cocody — Angré 8ème Tranche', addr: 'Carrefour Pétro-Ivoire, face Cité BCEAO', hours: H('07:30', '17:00'), lanes: '3 VL', wait: 25, flow: 'modere' },
-  { id: 'yopougon', zone: 'abidjan', city: 'Abidjan', name: 'Yopougon — Andokoi Zone Industrielle', addr: 'Avenue Industrielle, proche nouvelle voie Yopougon-Attécoubé', hours: H('07:00', '17:30'), lanes: '4 VL + 1 Moto', wait: 15, flow: 'fluide' },
+  { id: 'yopougon', zone: 'abidjan', city: 'Abidjan', name: 'Yopougon — Andokoi Zone Industrielle', addr: 'Avenue Industrielle, proche nouvelle voie Yopougon-Attécoubé', hours: H('07:00', '17:30'), lanes: '4 VL + 1 Moto', wait: 15, flow: 'fluide', tag: 'Taxis & Wôrô-wôrô acceptés' },
   { id: 'koumassi', zone: 'abidjan', city: 'Abidjan', name: 'Koumassi — Zone Industrielle', addr: 'Boulevard du Gabon', hours: H('07:30', '17:00'), lanes: '3 VL + 1 PL', wait: 20, flow: 'fluide' },
   { id: 'bouake', zone: 'interieur', city: 'Bouaké', name: 'Bouaké — Délégation Régionale Centre', addr: 'Quartier Commerce, Boulevard Reine Pokou', hours: H('07:30', '16:30'), lanes: '3 VL + PL', wait: 10, flow: 'fluide' },
   { id: 'sanpedro', zone: 'interieur', city: 'San Pedro', name: 'San Pedro — Zone Portuaire Ouest', addr: 'Route de Grand Béréby, Axe Portuaire Autonome', hours: H('07:30', '16:30'), lanes: '2 VL + 2 PL', wait: 15, flow: 'fluide' },
@@ -56,6 +56,13 @@ export const CENTERS = [
 
 export const CENTER_CODES = {vridi: "VRD", angre: "ANG", yopougon: "YOP", koumassi: "KOU", bouake: "BKE", sanpedro: "SPD", yamoussoukro: "YAM"};
 export const LANE_IND = { vl: 'Voie rapide — Piste 2', util: 'Voie rapide — Piste 2', pl: 'Piste 3 (poids lourds)', moto: 'Piste 4 (deux-roues)' };
+
+/** Coordonnées approximatives (niveau quartier/ville) — uniquement pour trier par distance à vol d'oiseau. */
+export const CENTER_GEO = {
+  vridi: [5.2527, -3.9855], angre: [5.401, -3.984], yopougon: [5.335, -4.09], koumassi: [5.297, -3.95],
+  bouake: [7.6906, -5.03], sanpedro: [4.7485, -6.6363], yamoussoukro: [6.8276, -5.2893], korhogo: [9.458, -5.629],
+  daloa: [6.8774, -6.4502], abengourou: [6.7297, -3.4964], man: [7.4125, -7.5538], soubre: [5.7855, -6.594], agboville: [5.928, -4.213],
+};
 
 export const LANES = {
   VP: 'Piste 1 (Véhicules légers)',
@@ -71,11 +78,24 @@ export const FLEET_BASE = [
   { id: 'v3', plate: '8492 JJ 01', cg: 'CG24031207', model: 'Toyota Coaster 30 pl.', short: 'Toyota Coaster', role: 'Minibus transport', type: 'Minibus', cat: 'Minibus', tarif: 'bus', dur: 30, dueIn: 19, driver: 'Seydou Traoré', phone: '0199887766' },
   { id: 'v4', plate: '5521 HG 01', cg: 'CG23099412', model: 'Peugeot Boxer 2.2 HDi', short: 'Peugeot Boxer', role: 'Fourgonnette', type: 'VP Utilitaire', cat: 'VP', tarif: 'vl', dur: 25, dueIn: 22, driver: 'Koffi Jean-Luc', phone: '0755667788' },
   { id: 'v5', plate: '3819 FE 01', cg: 'CG24002381', model: 'MAN TGS 41.400 Benne', short: 'MAN TGS', role: 'Benne', type: 'PL Poids lourd', cat: 'PL', tarif: 'pl', dur: 30, dueIn: 68, driver: 'Adama Ouattara', phone: '0102030405' },
-  { id: 'v6', plate: '9942 MB 01', cg: 'CG24029576', model: 'Toyota Corolla Cross', short: 'Toyota Corolla Cross', role: 'Berline', type: 'VP Berline', cat: 'VP', tarif: 'vl', dur: 20, dueIn: 118, driver: 'Awa Diallo', phone: '0506070809' },
+  { id: 'v6', plate: '9942 MB 01', cg: 'CG24031991', model: 'Toyota Corolla Cross', short: 'Toyota Corolla Cross', role: 'Berline', type: 'VP Berline', cat: 'VP', tarif: 'vl', dur: 20, dueIn: 118, driver: 'Awa Diallo', phone: '0506070809' },
 ];
 
-// Véhicule personnel de démonstration (espace particulier)
-export const DEMO_OWN = { plate: '6021 KB 01', cg: 'CG24041160', model: 'Toyota RAV4', short: 'Toyota RAV4', dueIn: 310 };
+// Véhicules personnels de démonstration (espace particulier). Échéances relatives à aujourd'hui.
+export const OWN_VEHICLES = [
+  { plate: '1580 EF 01', cg: 'CG24029576', model: 'Toyota Corolla XLI', short: 'Toyota Corolla', icon: 'directions_car', usage: 'Usage public', genre: 'Voiture particulière',
+    owner: 'BUFALO SARL', rccm: 'R.C.C.M CI-ABJ-01-2005-B78', dueIn: 18, insurer: 'SUNU / CEDEAO', insuranceIn: 95, lastCenter: 'Vridi 1',
+    specs: { first: '03-10-2006', issued: '03-10-2019', cv: '7 CV', cc: '796 cc', energy: 'Essence', seats: '5 places', body: 'Cond Int 4 Pts' },
+    history: [{ off: -365, kind: 'ok', center: 'SICTA Vridi' }, { off: -734, kind: 'ok', center: 'SICTA Koumassi' }, { off: -748, kind: 'contre', center: 'SICTA Koumassi', note: 'Pneumatiques' }] },
+  { plate: '6021 KB 01', cg: 'CG24041160', model: 'Toyota RAV4', short: 'Toyota RAV4', icon: 'airport_shuttle', usage: 'Usage privé', genre: 'Voiture particulière',
+    owner: 'KOUAMÉ Jean', rccm: null, dueIn: 310, insurer: 'NSIA / CEDEAO', insuranceIn: 280, lastCenter: 'Vridi 1',
+    specs: { first: '12-02-2020', issued: '20-02-2020', cv: '9 CV', cc: '1987 cc', energy: 'Essence', seats: '5 places', body: 'Cond Int 4 Pts' },
+    history: [{ off: -365, kind: 'ok', center: 'SICTA Vridi' }] },
+  { plate: '4589 HJ 01', cg: 'CG24052208', model: 'Peugeot 301', short: 'Peugeot 301', icon: 'directions_car', usage: 'Usage privé', genre: 'Voiture particulière',
+    owner: 'KOUAMÉ Jean', rccm: null, dueIn: 150, insurer: 'SAHAM / CEDEAO', insuranceIn: 140, lastCenter: 'Yopougon 1',
+    specs: { first: '05-06-2018', issued: '18-06-2018', cv: '6 CV', cc: '1199 cc', energy: 'Essence', seats: '5 places', body: 'Cond Int 4 Pts' },
+    history: [{ off: -365, kind: 'ok', center: 'SICTA Yopougon' }] },
+];
 
 export const COMPANY = { name: 'LOGISTIQUE DU PORT ABIDJAN SA', ref: 'N°CI-ABJ-882', taxId: '2018892 A', addr: 'Zone Portuaire Vridi, Abidjan', units: 24 };
 
@@ -103,4 +123,37 @@ export const TESTIMONIALS = [
   { n: 'Koffi Amani', i: 'KA', r: 'Particulier (Cocody Angré) • Toyota RAV4', q: "Avant je passais une demi-journée à Angré. Là, j'ai pris mon RDV à 08h15, payé par Wave. À 08h35 j'avais déjà mon macaron. Une vraie révolution !" },
   { n: 'Souleymane Touré', i: 'ST', r: 'Gestionnaire flotte • 14 Gbakas Yopougon', q: "Pour notre coopérative, réserver en ligne nous a fait gagner des centaines d'heures. On n'avance plus de cash aux chauffeurs, tout est réglé par Orange Money." },
   { n: 'Edwige Bamba', i: 'EB', r: 'Cadre commerciale • Yamoussoukro', q: "Le rappel SMS 30 jours avant la date m'a sauvée d'une amende sur l'autoroute du Nord. Centre très propre et contrôleurs très professionnels." },
+];
+
+// Page « SICTA Pro » : curseurs du simulateur de parc (valeur par défaut, max).
+export const PRO_FLEET = [
+  { k: 'vl', label: 'Véhicules légers & utilitaires (VL)', sub: 'Véhicules commerciaux, berlines de fonction, pick-ups', icon: 'directions_car', tarif: 'vl', def: 25, max: 150 },
+  { k: 'pl', label: 'Poids lourds, tracteurs & remorques (PL)', sub: 'Porteurs, citernes carburant, semi-remorques fret portuaire', icon: 'local_shipping', tarif: 'pl', def: 12, max: 80 },
+  { k: 'bus', label: 'Engins de transport, cars & minibus', sub: 'Navettes personnel, autocars interurbains, navettes VTC', icon: 'airport_shuttle', tarif: 'bus', def: 8, max: 60 },
+  { k: 'moto', label: 'Flotte 2 & 3 roues de livraison', sub: 'Motos coursiers, tricycles livraison express Abidjan', icon: 'two_wheeler', tarif: 'moto', def: 15, max: 100 },
+];
+export const PRO_MIN_MOBILE = { vl: 15, pl: 8 }; // minimum pour une unité mobile (FAQ de la maquette)
+export const PRO_SAVED_H = 5 / 3;                 // ≈ 2 h d'attente spontanée → 20 min en voie prioritaire
+export const PRO_ZONES = ['Abidjan & Grand Abidjan', 'San Pedro & Région Sud-Ouest', 'Bouaké & Région Centrale', 'Korhogo & Région Nord', 'Multi-sites réseau national'];
+export const PRO_SIZES = ['5 à 20 véhicules', '20 à 50 véhicules', '50 à 150 véhicules', 'Plus de 150 véhicules (grand compte)'];
+export const PRO_PILLARS = [
+  { icon: 'fast_forward', t: 'Couloir coupe-file dédié', d: 'Fini les files d’attente dès l’aube pour vos chauffeurs : créneau prioritaire réservé sur piste dédiée dans nos stations.', k: 'Prise en charge < 20 minutes' },
+  { icon: 'airport_shuttle', t: 'Unités mobiles sur site', d: 'Nos camions-laboratoires certifiés se déplacent sur votre site industriel pour inspecter tout votre parc sans déplacer un véhicule.', k: 'Dès 20 véhicules groupés' },
+  { icon: 'dashboard', t: 'Espace numérique SICTA Pro', d: 'Tableau de bord en temps réel : alertes 30 et 15 jours avant expiration, import CSV de vos cartes grises, Pass numériques.', k: 'Accès portail web' },
+  { icon: 'account_balance', t: 'Facturation centralisée', d: 'Fini les avances de caisse aux chauffeurs : règlement unique par compte conventionné, virement ou Mobile Money entreprise.', k: 'TVA & timbres déductibles' },
+];
+export const PRO_STEPS = [
+  { icon: 'upload', t: 'Enregistrement de la flotte', d: 'Importez la liste de vos immatriculations par fichier CSV. Notre équipe valide la grille tarifaire applicable.', k: 'Import CSV en 1 clic' },
+  { icon: 'event_available', t: 'Planification flexible', d: 'Créneaux prioritaires réservés en station pour vos chauffeurs, ou déploiement d’une unité mobile dans vos cours et entrepôts.', k: 'Passage groupé ou étalé' },
+  { icon: 'qr_code_2', t: 'Délivrance & audit', d: 'Pass numériques et certificats émis instantanément, avec un audit complet des freins, pneus et émissions de votre flotte.', k: 'Pass QR traçables' },
+];
+export const PRO_FAQ = [
+  { q: 'Quelles sont les conditions pour déployer une unité mobile sur notre site ?', a: 'Votre site doit disposer d’une surface plane stabilisée ou bétonnée d’au moins 30 mètres de dégagement linéaire et regrouper au minimum <strong>15 véhicules légers ou 8 poids lourds</strong> sur la session.' },
+  { q: 'Les procès-verbaux délivrés par unité mobile ont-ils la même valeur légale ?', a: 'Oui, rigoureusement identique : les unités mobiles sont reliées au serveur central SICTA et à la DGTT. Les vignettes sécurisées sont délivrées sur place.' },
+  { q: 'Comment fonctionnent le compte conventionné et la facturation mensuelle ?', a: 'Après signature de la convention, un compte client professionnel est ouvert. Vos chauffeurs se présentent sans moyen de paiement ; vous recevez un relevé détaillé par immatriculation, payable à 30 jours.' },
+  { q: 'Que se passe-t-il en cas de défaillance constatée lors du contrôle ?', a: 'Un rapport exhaustif est remis immédiatement à votre responsable de maintenance, puis une contre-visite prioritaire est programmée sous 15 jours, sans refaire tout le contrôle.' },
+];
+export const PRO_TESTI = [
+  { n: 'Kouamé Armand K.', i: 'KA', r: 'Directeur logistique & transport — groupe cacao & agro-industrie, Abidjan', q: 'Avec plus de 120 semi-remorques entre le Port d’Abidjan et l’hinterland, l’immobilisation en file d’attente coûtait cher. Une unité mobile SICTA sur notre base de Vridi a résolu la contrainte en deux week-ends.' },
+  { n: 'Diallo Tidiane', i: 'DT', r: 'Responsable parc matériel & engins — BTP, San Pedro', q: 'La facturation mensuelle centralisée et les alertes 30 jours avant péremption ont éliminé 100 % des amendes pour défaut de visite technique.' },
 ];

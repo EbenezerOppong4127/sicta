@@ -1,5 +1,5 @@
 // Logique métier : tarifs, créneaux, planning de flotte, références, QR.
-import { CENTERS, CENTER_CODES, DEMO_OWN, FLEET_BASE, FLEET_DISCOUNT, OPS, TARIFFS, TVA } from './data.js';
+import { CENTERS, CENTER_CODES, CENTER_GEO, FLEET_BASE, FLEET_DISCOUNT, OPS, OWN_VEHICLES, PRO_FLEET, PRO_MIN_MOBILE, PRO_SAVED_H, TARIFFS, TVA } from './data.js';
 import { store } from './store.js';
 import { addDays, fromMin, fromISO, hash, isSunday, nextWorkday, normPlate, todayISO, toMin, workday } from './util.js';
 
@@ -34,7 +34,7 @@ export function lookup(query) {
   const today = todayISO();
   const pool = [
     ...fleetVehicles().map((v) => ({ plate: v.plate, cg: v.cg, model: v.short ?? v.model, due: v.due })),
-    { plate: DEMO_OWN.plate, cg: DEMO_OWN.cg, model: DEMO_OWN.model, due: addDays(today, DEMO_OWN.dueIn) },
+    ...OWN_VEHICLES.map((v) => ({ plate: v.plate, cg: v.cg, model: v.model, due: addDays(today, v.dueIn) })),
   ];
   return (
     pool.find((v) => (plate && v.plate === plate) || (v.cg && v.cg.replace(/[^A-Z0-9]/g, '') === raw)) ?? null
@@ -61,19 +61,85 @@ export function bookableDays(n = 7) {
   return out;
 }
 
-/** Créneaux de 20 min ; indisponibilités simulées mais stables pour un (centre, jour, heure). */
+const SLOT_MIN = 45;
+const LUNCH = ['12:00', '13:30']; // pause : la matinée finit à 12h00, l'après-midi reprend à 13h30
+
+/**
+ * Créneaux de 45 min, matinée puis après-midi. Le premier créneau d'un bloc démarre 30 min après
+ * l'ouverture du bloc (briefing de piste). Indisponibilités simulées mais stables pour (centre, jour, heure).
+ */
 export function slotsFor(centerId, iso) {
   const c = center(centerId);
   const now = new Date();
   const isToday = iso === todayISO();
   const nowMin = now.getHours() * 60 + now.getMinutes() + 30;
+  const blocks = [
+    { id: 'matin', label: 'Matinée', from: toMin(c.hours.open), to: toMin(LUNCH[0]) },
+    { id: 'apres', label: 'Après-midi', from: toMin(LUNCH[1]), to: toMin(c.hours.close) },
+  ];
   const out = [];
-  for (let m = toMin(c.hours.open); m <= toMin(c.hours.close) - 30; m += 20) {
-    if (isToday && m < nowMin) continue;
-    const full = hash(`${centerId}${iso}${m}`) % 100 < (c.fast ? 18 : 28);
-    out.push({ time: fromMin(m), full });
+  for (const blk of blocks) {
+    for (let m = blk.from + 30; m + SLOT_MIN <= blk.to; m += SLOT_MIN) {
+      if (isToday && m < nowMin) continue;
+      const full = hash(`${centerId}${iso}${m}`) % 100 < (c.fast ? 18 : 28);
+      out.push({ time: fromMin(m), full, block: blk.id });
+    }
   }
+  const free = out.filter((s) => !s.full);
+  if (free.length > 1) free.at(-1).last = true;
   return out;
+}
+export const slotBlocks = (centerId) => {
+  const c = center(centerId);
+  return { matin: `${c.hours.open.replace(':', 'h')} - ${LUNCH[0].replace(':', 'h')}`, apres: `${LUNCH[1].replace(':', 'h')} - ${c.hours.close.replace(':', 'h')}` };
+};
+/** Part de créneaux libres d'un jour (pour la pastille verte / orange du calendrier). */
+export const dayLoad = (centerId, iso) => {
+  const s = slotsFor(centerId, iso);
+  return s.length ? s.filter((x) => !x.full).length / s.length : 0;
+};
+
+/** Distance à vol d'oiseau (km) entre une position et un centre. */
+export function distanceKm(lat, lon, centerId) {
+  const g = CENTER_GEO[centerId];
+  if (!g) return null;
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(g[0] - lat), dLon = rad(g[1] - lon);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat)) * Math.cos(rad(g[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// ---------- Mes véhicules ----------
+const addMonthsOff = (iso, off) => addDays(iso, off);
+/** Fiche complète d'une plaque : registre personnel > registre général > fiche minimale. */
+export function vehicleFile(plate) {
+  const today = todayISO();
+  const own = OWN_VEHICLES.find((v) => v.plate === plate);
+  if (own) {
+    const due = addDays(today, own.dueIn);
+    return { ...own, due, known: true, insuranceUntil: addDays(today, own.insuranceIn), tolerance: addDays(due, 15),
+      lastVisit: addMonthsOff(due, -365), history: own.history.map((h) => ({ ...h, date: addDays(due, h.off) })) };
+  }
+  const rec = lookup(plate);
+  return rec ? { plate, cg: rec.cg, model: rec.model, due: rec.due, tolerance: addDays(rec.due, 15), known: true, partial: true, history: [], specs: null, icon: 'directions_car' }
+             : { plate, model: 'Véhicule non référencé', known: false, partial: true, history: [], specs: null, icon: 'directions_car' };
+}
+
+// ---------- Simulateur de parc (SICTA Pro) ----------
+export function proEstimate(counts, mode) {
+  let total = 0, volume = 0, visits = 0;
+  for (const f of PRO_FLEET) {
+    const n = counts[f.k] ?? 0;
+    const t = TARIFFS[f.tarif];
+    const perYear = 12 / t.months; // nombre de visites par an et par véhicule
+    total += n * price(f.tarif).total * perYear;
+    visits += n * perYear;
+    volume += n;
+  }
+  const discount = Math.round((total * FLEET_DISCOUNT) / 1000) * 1000;
+  const perDay = mode === 'mobile' ? 40 : 30;
+  const mobileOk = (counts.vl ?? 0) >= PRO_MIN_MOBILE.vl || (counts.pl ?? 0) >= PRO_MIN_MOBILE.pl;
+  return { volume, visits, hours: Math.round(visits * PRO_SAVED_H), days: Math.max(1, Math.ceil(volume / perDay)), total: total - discount, gross: total, discount, mobileOk };
 }
 
 // ---------- Planning flotte ----------

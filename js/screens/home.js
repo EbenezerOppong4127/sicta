@@ -47,7 +47,7 @@ export default function home({ go }) {
             <div class="panel" id="check-panel" hidden>
               <div class="panel__head"><b>Contrôle express par immatriculation</b><button class="icon-btn" id="close-check" aria-label="Fermer" type="button">${ic('close')}</button></div>
             </div>
-            <a class="btn btn--tonal" href="#/flotte">${ic('corporate_fare')}<span>Espace flotte &amp; entreprises</span></a>
+            <a class="btn btn--tonal" href="#/pro">${ic('corporate_fare')}<span>Espace flotte &amp; entreprises</span></a>
           </div>
         </div>
 

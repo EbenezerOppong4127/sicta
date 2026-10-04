@@ -113,7 +113,8 @@ h3 { font-size: 16px; }
 .brand__t small { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); }
 .topbar__title { flex: 1; text-align: center; font-size: 17px; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar__end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.topbar__cta, .topnav { display: none; }
+.topbar .topbar__cta { display: none; white-space: nowrap; }
+.topnav { display: none; }
 #back:not([hidden]) + .brand .brand__t { display: none; }
 @media (min-width: 640px) { .brand__t { display: flex; } }
 @media (min-width: 1100px) {
@@ -123,7 +124,7 @@ h3 { font-size: 16px; }
   .topnav a { padding: 8px 12px; border-radius: var(--r-md); font-size: 14px; font-weight: 600; color: var(--slate); text-decoration: none; white-space: nowrap; }
   .topnav a:hover { background: var(--tint); color: var(--ink); }
   .topnav a[aria-current] { background: var(--tint-2); color: var(--navy); }
-  .topbar__cta { display: inline-flex; }
+  .topbar .topbar__cta { display: inline-flex; }
 }
 
 main { padding-top: var(--hh); min-height: 100dvh; outline: none; }

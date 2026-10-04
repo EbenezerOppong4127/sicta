@@ -29,6 +29,7 @@ const ASSETS = [
   "./js/screens/flotte-planning.js",
   "./js/screens/flotte.js",
   "./js/screens/home.js",
+  "./js/screens/pro.js",
   "./js/screens/reserver.js",
   "./js/screens/simulateur.js",
   "./js/screens/vehicules.js",
@@ -36,9 +37,7 @@ const ASSETS = [
   "./js/store.js",
   "./js/util.js",
   "./js/vendor/qrcode.js",
-  "./manifest.webmanifest",
-  "./shots/e2e_fleet_pass.png",
-  "./shots/e2e_pass.png"
+  "./manifest.webmanifest"
 ];
 // </assets>
 

@@ -1,6 +1,7 @@
 // Vérification de vignette / carte grise (module de la maquette desktop Image_16).
 import { el, ic } from '../util.js';
 import { plateCheck } from '../components/plateCheck.js';
+import { store } from '../store.js';
 
 export default function verifier() {
   const root = el(`
@@ -14,6 +15,6 @@ export default function verifier() {
     </section>
     <section class="card note">${ic('shield')}<div><b>Pourquoi vérifier ?</b><p class="small muted">Une vignette expirée depuis plus de 15 jours expose à une contravention forfaitaire. Activez le rappel SMS (J-30 et J-2) depuis le résultat.</p></div></section>
   </div>`);
-  root.querySelector('#chk').append(plateCheck({ placeholder: 'Plaque (7492 KL 01) ou carte grise (CG24029576)' }));
+  root.querySelector('#chk').append(plateCheck({ placeholder: 'Plaque (7492 KL 01) ou carte grise (CG24029576)', initial: store.get().booking.plate }));
   return root;
 }

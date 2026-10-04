@@ -1,145 +1,180 @@
 // Parcours particulier : 1 Tarif & centre → 2 Créneau → 3 Véhicule & paiement → 4 Reçu (Pass).
 import { CENTERS, LANE_IND, OPS, PAYMENTS, TARIFFS, DOCS } from '../data.js';
-import { dateLong, dateShort, dayNum, download, el, esc, fmt, fromMin, ic, monthShort, money, normPhone, normPlate, phonePretty, toMin, weekdayShort } from '../util.js';
-import { bookableDays, center, lookup, newBookingRef, passId, price, qrPayload, slotsFor } from '../domain.js';
+import { addDays, dateLong, dateShort, dayNum, download, el, esc, fmt, fromISO, fromMin, ic, isSunday, money, normPhone, normPlate, phonePretty, toast, todayISO, toMin, weekdayShort, workday } from '../util.js';
+import { center, dayLoad, distanceKm, lookup, newBookingRef, passId, price, qrPayload, slotBlocks, slotsFor } from '../domain.js';
 import { store } from '../store.js';
 import { payCards, payModal, plateBadge, qrBlock, stepper } from '../components/ui.js';
 import { printSheets } from '../components/print.js';
 
-const STEPS = ['Tarif', 'Créneau', 'Véhicule', 'Reçu'];
-const ORDER = ['tarif', 'creneau', 'paiement', 'pass'];
+const STEPS = ['Tarifs', 'Centre & Date', 'Véhicule', 'Confirmation'];
+const ORDER = ['creneau', 'paiement', 'pass']; // l'étape « Tarifs » est le simulateur (#/simulateur)
 
 export default function reserver({ params, go }) {
-  const step = params.step ?? 'tarif';
+  const step = params.step ?? 'creneau';
   const idx = ORDER.indexOf(step);
   if (idx < 0) return { redirect: '/reserver' };
   const b = store.get().booking;
-  if (idx >= 2 && !(b.date && b.time)) return { redirect: '/reserver/creneau' };
-  if (idx === 3 && !(b.paid && b.ref)) return { redirect: '/reserver/paiement' };
-  const root = el(`<div class="wrap wrap--app stack-lg">${stepper(STEPS, idx)}<div id="step"></div></div>`);
-  root.querySelector('#step').append({ tarif, creneau, paiement, pass }[step](go));
+  if (idx >= 1 && !(b.date && b.time)) return { redirect: '/reserver' };
+  if (idx === 2 && !(b.paid && b.ref)) return { redirect: '/reserver/paiement' };
+  const root = el(`<div class="wrap wrap--app stack-lg">${stepper(STEPS, idx + 1)}<div id="step"></div></div>`);
+  root.querySelector('#step').append({ creneau, paiement, pass }[step](go));
   return root;
 }
 
-const flowLabel = (c) => (c.flow === 'fluide' ? `Fluide < ${c.wait} min` : `Affluence modérée (${c.wait} min)`);
+const flowLabel = (c) => (c.flow === 'fluide' ? `Fluide (< ${c.wait} min d’attente)` : `Modéré (~${c.wait} min)`);
+const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+const mondayOf = (iso) => {
+  const d = fromISO(iso);
+  const dow = d.getDay(); // 0 = dimanche → on affiche la semaine suivante (centres fermés le dimanche)
+  return addDays(iso, dow === 0 ? 1 : 1 - dow);
+};
+const MAX_WEEKS = 4;
 
-// ---------- 1. Tarif & centre ----------
-function tarif(go) {
-  const b = store.get().booking;
-  let zone = center(b.centerId).zone;
-  const node = el(`
-  <form class="stack-lg" novalidate>
-    <section class="card stack">
-      <h2>Votre véhicule</h2>
-      <div class="cat-grid">${Object.entries(TARIFFS).filter(([, t]) => !t.fleetOnly).map(([k, t]) => `<label class="cat"><input type="radio" name="cat" value="${k}" ${b.category === k ? 'checked' : ''}><span>${ic(t.icon)}<b>${t.label}</b><small>${esc(t.sub.split(',').slice(0, 2).join(','))}</small></span></label>`).join('')}</div>
-      <div class="chips">${Object.entries(OPS).map(([k, o]) => `<label class="chip-radio"><input type="radio" name="op" value="${k}" ${b.op === k ? 'checked' : ''}><span>${o.label}</span></label>`).join('')}</div>
-      <div class="ledger"><dl class="ledger__rows">
-        <div><dt>Prestation contrôle technique</dt><dd id="t-base"></dd></div>
-        <div><dt>Vignette &amp; timbre fiscal DGI</dt><dd id="t-tax"></dd></div></dl>
-        <div class="ledger__total"><span class="eyebrow">Total TTC</span><div class="ledger__amount"><b id="t-total"></b> <span>FCFA</span></div></div></div>
-    </section>
-    <section class="card stack">
-      <div class="sec__head"><h2>Centre d’inspection</h2>
-        <div class="chips chips--sm" role="group" aria-label="Zone">
-          ${[['abidjan', 'Abidjan'], ['interieur', 'Intérieur']].map(([k, l]) => `<button type="button" class="chip-btn" data-zone="${k}" aria-pressed="${zone === k}">${l}</button>`).join('')}
-        </div></div>
-      <div class="rlist" role="radiogroup" aria-label="Centre"></div>
-    </section>
-    <div class="sticky-cta"><div class="sticky-cta__in">
-      <div><span class="eyebrow">Tarif légal</span><div class="amount"><b id="amt"></b> <span>FCFA</span></div></div>
-      <button class="btn btn--cta" type="submit"><span>Choisir le créneau</span>${ic('arrow_forward')}</button></div></div>
-  </form>`);
-  const list = node.querySelector('.rlist');
-  const paintList = () => {
-    const cur = store.get().booking.centerId;
-    list.innerHTML = CENTERS.filter((c) => c.zone === zone).map((c) => `
-      <label class="rcard"><input type="radio" name="center" value="${c.id}" ${c.id === cur ? 'checked' : ''}>
-        <span class="rcard__b"><b>${esc(c.name)}</b>
-        <span class="muted small">${c.addr ? esc(c.addr) : esc(c.city)} · ${c.hours.open.replace(':', 'h')}–${c.hours.close.replace(':', 'h')}</span>
-        <span class="chip chip--${c.flow === 'fluide' ? 'ok' : 'warn'}"><i class="dot ${c.flow === 'fluide' ? 'dot--pulse' : ''}"></i>${flowLabel(c)}</span></span></label>`).join('');
-  };
-  const paintAmt = () => {
-    const p = price(node.cat.value, node.op.value);
-    node.querySelector('#amt').textContent = fmt(p.total);
-    node.querySelector('#t-total').textContent = fmt(p.total);
-    node.querySelector('#t-base').textContent = money(p.base);
-    node.querySelector('#t-tax').textContent = money(p.tax);
-  };
-  node.addEventListener('change', (e) => {
-    const k = { center: 'centerId', cat: 'category', op: 'op' }[e.target.name];
-    if (k) store.patch('booking', { [k]: e.target.value, ...(k === 'centerId' ? { date: null, time: null } : {}) });
-    paintAmt();
-  });
-  node.addEventListener('click', (e) => {
-    const z = e.target.closest('[data-zone]');
-    if (!z) return;
-    zone = z.dataset.zone;
-    node.querySelectorAll('[data-zone]').forEach((x) => x.setAttribute('aria-pressed', x === z));
-    if (center(store.get().booking.centerId).zone !== zone) store.patch('booking', { centerId: CENTERS.find((c) => c.zone === zone).id, date: null, time: null });
-    paintList();
-  });
-  node.addEventListener('submit', (e) => {
-    e.preventDefault();
-    go('/reserver/creneau');
-  });
-  paintList();
-  paintAmt();
-  return node;
-}
-
-// ---------- 2. Créneau ----------
+// ---------- 2. Centre & date ----------
 function creneau(go) {
-  const b = store.get().booking;
-  const c = center(b.centerId);
-  const days = bookableDays(7);
-  let day = days.includes(b.date) ? b.date : days[0];
-  let time = b.date === day ? b.time : null;
+  const b0 = store.get().booking;
+  const today = todayISO();
+  const bookable = (d) => d >= today && !isSunday(d) && slotsFor(store.get().booking.centerId, d).length > 0;
+  let q = '';
+  let zone = 'tous';
+  let big = false;
+  let showAll = false;
+  let geo = null;
+  let day = b0.date && b0.date >= today && !isSunday(b0.date) ? b0.date : null;
+  let time = day === b0.date ? b0.time : null;
+  let week = mondayOf(day ?? workday(today));
+  if (!day) day = null;
+
   const node = el(`
   <div class="stack-lg">
-    <section class="card stack">
-      <div class="row row--between"><div class="row row--gap">${ic('location_on', 'accent')}<div><span class="eyebrow">Centre technique agréé</span><h2>${esc(c.name)}</h2><span class="muted small">${c.addr ? esc(c.addr) : esc(c.city)}</span></div></div>
-        <a class="link small" href="#/reserver">Changer</a></div>
-      <div class="note">${ic('speed')} ${c.fast ? 'Piste haute cadence' : 'Piste standard'} · ${c.lanes} · ${c.wait} min / véhicule</div>
+    <header class="stack-s"><span class="eyebrow accent">${ic('location_on')} Étape 2 sur 4</span><h1 class="h1">Choisissez votre station SICTA</h1>
+      <p class="muted small">Sélectionnez le centre le plus accessible et réservez votre passage prioritaire.</p></header>
+    <div class="note row row--between" id="tarif-note"></div>
+    <section class="stack">
+      <div class="row"><div class="search">${ic('search')}<input type="search" id="q" placeholder="Ville, quartier ou centre" aria-label="Rechercher un centre" autocomplete="off"></div>
+        <button class="btn btn--tonal btn--sm" id="filter-btn" type="button" aria-expanded="false" aria-controls="filters">${ic('tune')}<span>Filtrer</span></button></div>
+      <div class="chips chips--sm" id="filters" hidden role="group" aria-label="Filtres">
+        ${[['tous', 'Tous'], ['abidjan', 'Abidjan'], ['interieur', 'Intérieur']].map(([k, l]) => `<button class="chip-btn" type="button" data-zone="${k}" aria-pressed="${k === 'tous'}">${l}</button>`).join('')}
+        <button class="chip-btn" type="button" data-big aria-pressed="false">${ic('local_shipping')} Gros gabarit</button></div>
+      <button class="gps" id="gps" type="button">${ic('my_location')}<span>Centres les plus proches de moi</span><span class="chip chip--warn" id="gps-st">Activer</span></button>
     </section>
+    <section class="stack" id="stations" role="radiogroup" aria-label="Centres"></section>
+
     <section class="card stack">
-      <h2>Date</h2>
-      <div class="days" role="radiogroup" aria-label="Jour">${days.map((d) => `<button type="button" role="radio" class="day" data-day="${d}" aria-checked="${d === day}"><small>${weekdayShort(d)}</small><b>${dayNum(d)}</b><small>${monthShort(d)}</small></button>`).join('')}</div>
-      <h2>Heure</h2>
-      <div class="slots" role="radiogroup" aria-label="Créneau"></div>
-      <p class="small muted">${ic('info')} Modification gratuite jusqu’à 2 h avant le créneau.</p>
+      <div class="row row--between"><h2 class="row row--gap">${ic('calendar_today', 'accent')}<span id="month"></span></h2>
+        <div class="row"><button class="icon-btn icon-btn--tonal" id="prev" type="button" aria-label="Semaine précédente">${ic('chevron_left')}</button>
+        <button class="icon-btn icon-btn--tonal" id="next-w" type="button" aria-label="Semaine suivante">${ic('chevron_right')}</button></div></div>
+      <div class="days days--6" id="days" role="radiogroup" aria-label="Jour"></div>
+      <div class="legend small muted"><span><i class="dot"></i> Créneaux libres</span><span><i class="dot dot--o"></i> Forte affluence</span></div>
     </section>
-    <div class="sticky-cta"><div class="sticky-cta__in">
-      <div><span class="eyebrow">Votre créneau</span><div class="amount amount--s" id="sel">Choisissez une heure</div></div>
-      <button class="btn btn--cta" id="next" type="button" disabled><span>Véhicule &amp; paiement</span>${ic('arrow_forward')}</button></div></div>
+    <section class="card stack" id="slots" aria-live="polite"></section>
+
+    <div class="sticky-cta"><div class="sticky-cta__in sticky-cta__in--dark stack">
+      <div class="row row--between row--top"><div class="stack-s"><span class="eyebrow">Créneau réservé</span><b id="sum-when" class="sum-when">Choisissez un créneau</b><span class="small" id="sum-where"></span></div>
+        <span class="chip chip--ok">${ic('bolt')} File express</span></div>
+      <button class="btn btn--cta btn--lg btn--block" id="go" type="button" disabled><span>Valider ce créneau et continuer</span>${ic('arrow_forward')}</button></div></div>
   </div>`);
-  const slotsEl = node.querySelector('.slots');
-  const next = node.querySelector('#next');
-  const paint = () => {
-    const slots = slotsFor(b.centerId, day);
-    slotsEl.innerHTML = slots.length
-      ? slots.map((s) => `<button type="button" role="radio" class="slot" data-t="${s.time}" aria-checked="${s.time === time}" ${s.full ? 'disabled' : ''}>${s.time}${s.full ? '<small>Complet</small>' : ''}</button>`).join('')
-      : `<p class="muted">Plus de créneau disponible ce jour-là. Choisissez le jour suivant.</p>`;
-    node.querySelector('#sel').textContent = time ? `${dateShort(day)} · ${time}` : 'Choisissez une heure';
-    next.disabled = !time;
+
+  const $ = (s) => node.querySelector(s);
+  const cur = () => store.get().booking;
+
+  const paintTarif = () => {
+    const b = cur(), p = price(b.category, b.op);
+    $('#tarif-note').innerHTML = `<span class="row row--gap">${ic(TARIFFS[b.category].icon)}<span><b class="small">${TARIFFS[b.category].label} · ${OPS[b.op].label}</b><br><span class="small muted">${money(p.total)} TTC · validité ${p.months} mois</span></span></span><a class="link small" href="#/simulateur">Modifier</a>`;
   };
+
+  const paintStations = () => {
+    const sel = cur().centerId;
+    let rows = CENTERS.filter((c) => (zone === 'tous' || c.zone === zone) && (!big || /PL/.test(c.lanes)) && `${c.name} ${c.city} ${c.addr ?? ''}`.toLowerCase().includes(q));
+    if (geo) rows = rows.map((c) => ({ ...c, km: distanceKm(geo.lat, geo.lon, c.id) })).sort((a, b) => a.km - b.km);
+    const total = rows.length;
+    const limit = q || zone !== 'tous' || big || showAll ? rows.length : 4;
+    let shown = rows.slice(0, limit);
+    const pinned = CENTERS.find((c) => c.id === sel);
+    if (pinned && !shown.some((c) => c.id === sel) && rows.some((c) => c.id === sel)) shown = [rows.find((c) => c.id === sel), ...shown.slice(0, limit - 1)];
+    node.querySelector('#stations').innerHTML = (shown.length ? shown.map((c) => `
+      <label class="station ${c.id === sel ? 'is-on' : ''}"><input type="radio" name="center" value="${c.id}" ${c.id === sel ? 'checked' : ''}>
+        <span class="station__b"><b>SICTA ${esc(c.name)}</b>
+          <span class="small muted">${c.km != null ? `<b>${c.km < 10 ? c.km.toFixed(1) : Math.round(c.km)} km</b> • ` : ''}${c.addr ? esc(c.addr) : esc(c.city)}</span>
+          <span class="chips chips--sm"><span class="chip chip--${c.flow === 'fluide' ? 'ok' : 'warn'}"><i class="dot ${c.flow === 'fluide' ? 'dot--pulse' : 'dot--o'}"></i>${flowLabel(c)}</span>
+          <span class="chip chip--tonal">${ic('view_column')} ${esc(c.lanes)}</span>
+          ${/PL/.test(c.lanes) ? `<span class="chip chip--muted">${ic('local_shipping')} Gros gabarit</span>` : ''}${c.tag ? `<span class="chip chip--tonal">${esc(c.tag)}</span>` : ''}</span></span>
+        <span class="station__ck">${ic('check')}</span></label>`).join('')
+      : `<p class="muted center-text">Aucun centre ne correspond à votre recherche.</p>`)
+      + (!q && zone === 'tous' && !big && total > 4 ? `<button class="btn btn--ghost btn--sm" type="button" id="more">${showAll ? 'Réduire la liste' : `Voir les ${total} centres`}</button>` : '');
+  };
+
+  const paintDays = () => {
+    const days = Array.from({ length: 6 }, (_, i) => addDays(week, i));
+    $('#month').textContent = cap(fromISO(days[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+    $('#prev').disabled = week <= mondayOf(workday(today));
+    $('#next-w').disabled = week >= addDays(mondayOf(workday(today)), 7 * MAX_WEEKS);
+    $('#days').innerHTML = days.map((d) => {
+      const ok = bookable(d);
+      const load = ok ? dayLoad(cur().centerId, d) : 0;
+      return `<button type="button" role="radio" class="day" data-day="${d}" aria-checked="${d === day}" ${ok ? '' : 'disabled'} aria-label="${dateLong(d)}${ok ? '' : ' (indisponible)'}"><small>${weekdayShort(d).toUpperCase()}</small><b>${dayNum(d)}</b><i class="dot ${load >= 0.5 ? '' : 'dot--o'}" ${ok ? '' : 'hidden'}></i></button>`;
+    }).join('');
+  };
+
+  const paintSlots = () => {
+    const host = $('#slots');
+    if (!day) return void (host.innerHTML = `<p class="muted center-text">Choisissez un jour pour voir les créneaux.</p>`);
+    const slots = slotsFor(cur().centerId, day);
+    const blocks = slotBlocks(cur().centerId);
+    const part = (id, label, icon) => {
+      const list = slots.filter((s) => s.block === id);
+      if (!list.length) return '';
+      return `<div class="stack"><div class="row row--between"><h3 class="row row--gap">${ic(icon, 'accent')}${label}</h3><span class="small muted">${blocks[id]}</span></div>
+        <div class="slots" role="radiogroup" aria-label="${label}">${list.map((s) => `<button type="button" role="radio" class="slot" data-t="${s.time}" aria-checked="${s.time === time}" ${s.full ? 'disabled' : ''}>${s.time}<small>${s.full ? 'Complet' : s.time === time ? 'Sélectionné' : s.last ? 'Dernier' : 'Disponible'}</small></button>`).join('')}</div></div>`;
+    };
+    const html = part('matin', 'Matinée', 'wb_sunny') + part('apres', 'Après-midi', 'partly_cloudy_day');
+    host.innerHTML = html || `<p class="muted center-text">Plus de créneau disponible ce jour-là. Choisissez un autre jour.</p>`;
+  };
+
+  const paintSummary = () => {
+    const c = center(cur().centerId);
+    const ok = day && time;
+    $('#sum-when').innerHTML = ok ? `${ic('event_available')} ${dateLong(day).replace(/ \d{4}$/, '')} • ${time}` : 'Choisissez un créneau';
+    $('#sum-where').textContent = `SICTA ${c.name}`;
+    $('#go').disabled = !ok;
+  };
+  const paintAll = () => { paintTarif(); paintStations(); paintDays(); paintSlots(); paintSummary(); };
+
+  const pickCenter = (id) => {
+    store.patch('booking', { centerId: id, date: null, time: null });
+    // un autre centre a d'autres disponibilités : on garde le jour, on revalide l'heure
+    if (time && !slotsFor(id, day ?? today).some((s) => s.time === time && !s.full)) time = null;
+    if (day && !bookable(day)) day = null;
+    paintAll();
+  };
+
+  node.addEventListener('change', (e) => { if (e.target.name === 'center') pickCenter(e.target.value); });
+  node.addEventListener('input', (e) => { if (e.target.id === 'q') { q = e.target.value.trim().toLowerCase(); paintStations(); } });
   node.addEventListener('click', (e) => {
-    const d = e.target.closest('[data-day]');
-    const s = e.target.closest('[data-t]');
-    if (d) {
-      day = d.dataset.day;
-      time = null;
-      node.querySelectorAll('.day').forEach((x) => x.setAttribute('aria-checked', x === d));
-      paint();
-    } else if (s && !s.disabled) {
-      time = s.dataset.t;
-      paint();
+    const t = e.target;
+    const z = t.closest('[data-zone]'), bg = t.closest('[data-big]'), d = t.closest('[data-day]'), s = t.closest('[data-t]');
+    if (z) { zone = z.dataset.zone; node.querySelectorAll('[data-zone]').forEach((x) => x.setAttribute('aria-pressed', x === z)); paintStations(); }
+    else if (bg) { big = !big; bg.setAttribute('aria-pressed', big); paintStations(); }
+    else if (t.closest('#filter-btn')) { const f = $('#filters'); f.hidden = !f.hidden; $('#filter-btn').setAttribute('aria-expanded', !f.hidden); }
+    else if (t.closest('#more')) { showAll = !showAll; paintStations(); }
+    else if (t.closest('#prev')) { week = addDays(week, -7); paintDays(); }
+    else if (t.closest('#next-w')) { week = addDays(week, 7); paintDays(); }
+    else if (d && !d.disabled) { day = d.dataset.day; time = null; paintDays(); paintSlots(); paintSummary(); }
+    else if (s && !s.disabled) { time = s.dataset.t; paintSlots(); paintSummary(); }
+    else if (t.closest('#gps')) {
+      if (!navigator.geolocation) return void toast('Géolocalisation indisponible sur cet appareil.', 'err');
+      $('#gps-st').textContent = 'Recherche…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { geo = { lat: pos.coords.latitude, lon: pos.coords.longitude }; $('#gps-st').textContent = 'GPS actif'; $('#gps-st').className = 'chip chip--ok'; showAll = false; paintStations(); },
+        () => { $('#gps-st').textContent = 'Activer'; toast('Position refusée ou indisponible : activez la localisation du navigateur.', 'err'); },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    }
+    else if (t.closest('#go') && day && time) {
+      store.patch('booking', { date: day, time, paid: false, ref: null });
+      go('/reserver/paiement');
     }
   });
-  next.addEventListener('click', () => {
-    store.patch('booking', { date: day, time, paid: false, ref: null });
-    go('/reserver/paiement');
-  });
-  paint();
+  paintAll();
   return node;
 }
 
