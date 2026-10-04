@@ -41,8 +41,9 @@ python3 -m http.server 8000   # puis http://localhost:8000/
 
 ## Déployer sur GitHub Pages
 
-1. Réglages du dépôt → **Pages** → Source : **GitHub Actions**.
-2. Fusionner la branche dans `main` : `.github/workflows/pages.yml` publie le site et versionne le service worker.
+Le workflow `.github/workflows/static.yml` publie le site à chaque push sur `main`
+(Réglages → Pages → Source : **GitHub Actions**). Il versionne d'abord le service worker
+(`scripts/stamp-sw.mjs`) pour que chaque déploiement renouvelle le cache hors ligne.
 
 ## Format d'import CSV (flotte)
 
