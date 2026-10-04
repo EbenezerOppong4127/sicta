@@ -1,6 +1,6 @@
 // Landing publique (mobile = Image_18, desktop = Image_16).
 import { CENTERS, DOCS, FAQ, HOW, PAYMENTS, TESTIMONIALS } from '../data.js';
-import { el, esc, ic, money, normPlate } from '../util.js';
+import { el, esc, fmt, ic, normPlate } from '../util.js';
 import { price } from '../domain.js';
 import { store } from '../store.js';
 import { plateCheck } from '../components/plateCheck.js';
@@ -135,7 +135,7 @@ export default function home({ go }) {
   // Carte express (desktop)
   const f = root.querySelector('#express');
   const priceEl = root.querySelector('#ex-price');
-  const upd = () => (priceEl.innerHTML = `<b>${money(price(f.cat.value).total).replace(' FCFA', '')}</b> <span>FCFA</span>`);
+  const upd = () => (priceEl.innerHTML = `<b>${fmt(price(f.cat.value).total)}</b> <span>FCFA</span>`);
   f.addEventListener('change', upd);
   upd();
   f.addEventListener('submit', (e) => {

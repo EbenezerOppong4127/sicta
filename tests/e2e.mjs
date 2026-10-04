@@ -28,7 +28,20 @@ async function fresh({ viewport = MOBILE, init, geolocation, permissions = ['cli
   return { ctx, page, errors };
 }
 const hash = (page) => page.evaluate(() => location.hash);
-const open = async (page, route) => { await page.goto(BASE + '#' + route); await page.waitForSelector('main > *'); await page.waitForTimeout(120); };
+const icons = async (page, where = '') => {
+  const m = await page.evaluate(async () => {
+    const t = await (await fetch('icons/sprite.svg')).text();
+    const ids = new Set([...t.matchAll(/id="([^"]+)"/g)].map((x) => x[1]));
+    return [...new Set([...document.querySelectorAll('use')].map((u) => u.getAttribute('href').split('#')[1]).filter((i) => !ids.has(i)))];
+  });
+  if (m.length) throw new Error(`icônes manquantes ${where} : ${m.join(', ')}`);
+};
+const noDupUnit = async (page, where = '') => {
+  const t = await page.evaluate(() => document.body.innerText.replace(/[\u00a0\u202f]/g, ' '));
+  const dup = t.match(/FCFA\s+FCFA/); if (dup) throw new Error(`unité « FCFA » répétée ${where}`);
+  if (/\bundefined\b|\bNaN\b|\[object Object\]/.test(t)) throw new Error(`valeur invalide affichée ${where} : ${t.match(/.{20}(undefined|NaN|\[object Object\]).{20}/)?.[0]}`);
+};
+const open = async (page, route) => { await page.goto(BASE + '#' + route); await page.waitForSelector('main > *'); await page.waitForTimeout(120); await icons(page, route); await noDupUnit(page, route); };
 const text = (page, sel) => page.locator(sel).first().innerText();
 
 async function test(name, fn, opts) {
@@ -183,7 +196,7 @@ await test('GPS refusé : message et pas de plantage', async (p) => {
 });
 await test('CTA désactivé sans créneau ; choix d’un autre centre garde un état cohérent', async (p) => {
   await open(p, '/reserver'); ok(await p.locator('#go').isDisabled(), 'désactivé');
-  await p.locator('.day:not([disabled])').first().click(); await p.locator('.slot:not([disabled])').first().click(); ok(await p.locator('#go').isEnabled(), 'activé');
+  await p.locator('.day:not([disabled])').first().click(); await p.locator('.slot:not([disabled])').first().click(); ok(await p.locator('#go').isEnabled(), 'activé'); await icons(p, 'créneaux');
   await p.fill('#q', 'bouak'); await p.locator('.station').first().click(); await p.waitForTimeout(100);
   const slots = await p.locator('.slot[aria-checked=true]').count(); const en = await p.locator('#go').isEnabled(); eq(en, slots === 1, 'CTA cohérent avec la sélection');
 });
@@ -229,7 +242,7 @@ await test('Plaque connue : dossier pré-rempli (modèle + carte grise)', async 
 });
 await test('Parcours complet → Pass : QR lisible, identifiant, agenda, impression, partage', async (p) => {
   await open(p, '/simulateur'); await p.click('#go-book'); await pickSlot(p); await fillPay(p, { method: 'moov' }); await payAndWait(p);
-  const id = await text(p, '.ticket__id'); ok(/^SIC-VRD-\d{6}-\d{4}$/.test(id), 'identifiant ' + id);
+  await icons(p, 'pass'); const id = await text(p, '.ticket__id'); ok(/^SIC-VRD-\d{6}-\d{4}$/.test(id), 'identifiant ' + id);
   const ref = (await text(p, '.chip.chip--tonal.chip--lg')).match(/SIC-\d{4}-\d{6}/)?.[0]; ok(ref, 'référence');
   const payload = await decodeQR(p.locator('.ticket__qr .qr')); ok(payload.startsWith('SICTA|' + ref + '|7492KL01|'), 'payload QR : ' + payload); ok(payload.endsWith('|vridi'), 'centre dans le QR');
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#cal')]); const ics = (await import('node:fs')).readFileSync(await dl.path(), 'utf8');
@@ -330,7 +343,7 @@ await test('Parcours flotte complet : débit du compte, 4 Pass lisibles, envoi, 
   await open(p, '/flotte'); await p.click('#book'); await p.click('#next'); await p.waitForSelector('text=Décompte fiscal');
   const total = Number(nospace(await text(p, '.total-card .amount b'))); await payAndWait(p, 'text=Passage flotte confirmé');
   eq(await p.evaluate(() => JSON.parse(localStorage.getItem('sicta:v1')).fleet.balance), 450000 - total, 'solde débité');
-  const ref = (await text(p, '.chip--tonal')).match(/CMD-FLOTTE-\d{4}-\d{4}/)?.[0]; ok(ref, 'référence'); eq(await p.locator('.qr').count(), 4);
+  await icons(p, 'pass flotte'); const ref = (await text(p, '.chip--tonal')).match(/CMD-FLOTTE-\d{4}-\d{4}/)?.[0]; ok(ref, 'référence'); eq(await p.locator('.qr').count(), 4);
   for (let i = 0; i < 4; i++) { const payload = await decodeQR(p.locator('.qr').nth(i)); ok(payload.includes(`${ref}-0${i + 1}`), `QR ${i + 1} : ${payload}`); }
   ok(/08:30/.test(await text(p, '#passes article:nth-child(1)')) && /KL/.test(await text(p, '#passes article:nth-child(1)')), 'premier passage 08:30');
   await p.evaluate(() => document.querySelectorAll('[data-send]').forEach((a) => a.addEventListener('click', (e) => e.preventDefault(), true)));

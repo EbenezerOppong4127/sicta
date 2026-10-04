@@ -16,8 +16,9 @@ export function el(html) {
   return t.content.firstElementChild;
 }
 
-export const fmt = (n) => Math.round(n).toLocaleString('fr-FR').replace(/[  ]/g, ' ');
-export const money = (n) => `${fmt(n)} FCFA`;
+// Espaces insécables : « 12 000 FCFA » ne se coupe jamais en fin de ligne.
+export const fmt = (n) => Math.round(n).toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, '\u00a0');
+export const money = (n) => `${fmt(n)}\u00a0FCFA`;
 
 // ---------- Dates (toujours en heure locale, format ISO yyyy-mm-dd) ----------
 const pad = (n) => String(n).padStart(2, '0');

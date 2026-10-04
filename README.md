@@ -39,6 +39,20 @@ PDF A4 via l'impression du navigateur.
 python3 -m http.server 8000   # puis http://localhost:8000/
 ```
 
+## Tests
+
+```sh
+node --test tests/unit.test.mjs                      # logique métier (aucune dépendance)
+
+python3 -m http.server 8000 &                        # tests de bout en bout (Chromium)
+npm i playwright-core jsqr pngjs                     # dans un dossier de votre choix
+PW_FROM=/chemin/du/dossier BASE=http://localhost:8000/ node tests/e2e.mjs
+```
+
+La suite de bout en bout couvre les parcours complets (réservation, flotte, B2B), les gardes de navigation,
+l'horloge simulée (samedi soir, dimanche), le GPS, l'import CSV, le décodage réel des QR, l'accessibilité,
+le mode hors ligne et le responsive de 320 à 1536 px.
+
 ## Déployer sur GitHub Pages
 
 Le workflow `.github/workflows/static.yml` publie le site à chaque push sur `main`

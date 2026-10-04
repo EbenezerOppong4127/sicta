@@ -23,7 +23,7 @@ export default function planning({ go }) {
     <section id="banner"></section>
     <section class="stack"><div class="row row--between"><h2 class="row row--gap">Créneaux flotte <span class="badge">${vs.length}</span></h2><span class="small muted">Synchronisation continue</span></div><div class="stack" id="cards"></div></section>
     <div class="sticky-cta sticky-cta--nav"><div class="sticky-cta__in">
-      <div><span class="eyebrow">Total contrôles (remise flotte incluse)</span><div class="amount"><b id="tot"></b> <span>FCFA</span></div><span class="small muted">TVA &amp; macarons inclus</span></div>
+      <div><span class="eyebrow">Total (remise incluse)</span><div class="amount"><b id="tot"></b> <span>FCFA</span></div><span class="small muted">TVA &amp; macarons inclus</span></div>
       <button class="btn btn--cta btn--lg" id="next"><span>Facturation</span>${ic('arrow_forward')}</button></div></div>
   </div>`);
 
